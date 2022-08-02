@@ -40,7 +40,7 @@ def process_packet(packet, logf, fingerprint, pout):
     logger = logging.getLogger()
     global protocol_dict
 
-    if not packet.highest_layer == 'SSH':
+    if packet.highest_layer != 'SSH':
         return
     # Extract SSH identification string and correlate with KEXINIT msg
     if 'protocol' in packet.ssh.field_names:
@@ -49,7 +49,7 @@ def process_packet(packet, logf, fingerprint, pout):
         dstip = packet.ip.dst
         sport = packet.tcp.srcport
         dport = packet.tcp.srcport
-        key = '{}:{}_{}:{}'.format(srcip, sport, dstip, dport)
+        key = f'{srcip}:{sport}_{dstip}:{dport}'
         protocol_dict[key] = protocol
     if 'message_code' not in packet.ssh.field_names:
         return
@@ -62,8 +62,9 @@ def process_packet(packet, logf, fingerprint, pout):
             logger.info(json.dumps(event))
         return
     # Client HASSH
-    if ((fingerprint == 'client' or fingerprint == 'all')
-            and int(packet.tcp.srcport) > int(packet.tcp.dstport)):
+    if fingerprint in ['client', 'all'] and int(packet.tcp.srcport) > int(
+        packet.tcp.dstport
+    ):
         record = client_hassh(packet)
         if logf == 'json':
             logger.info(json.dumps(record))
@@ -94,9 +95,9 @@ def process_packet(packet, logf, fingerprint, pout):
             cl3e=color.END,
             proto=record['client'])
         print(tmp)
-    # Server HASSH
-    elif ((fingerprint == 'server' or fingerprint == 'all')
-            and int(packet.tcp.srcport) < int(packet.tcp.dstport)):
+    elif fingerprint in ['server', 'all'] and int(packet.tcp.srcport) < int(
+        packet.tcp.dstport
+    ):
         record = server_hassh(packet)
         if logf == 'json':
             logger.info(json.dumps(record))
@@ -133,15 +134,15 @@ def event_log(packet, event):
     """log the anomalous packets"""
     if event == "retransmission":
         event_message = "This packet is a (suspected) retransmission"
-    # Report the event (only for JSON output)
-    msg = {"timestamp": packet.sniff_time.isoformat(),
-           "eventType": event,
-           "eventMessage": event_message,
-           "sourceIp": packet.ip.src,
-           "destinationIp": packet.ip.dst,
-           "sourcePort": packet.tcp.srcport,
-           "destinationPort": packet.tcp.dstport}
-    return msg
+    return {
+        "timestamp": packet.sniff_time.isoformat(),
+        "eventType": event,
+        "eventMessage": event_message,
+        "sourceIp": packet.ip.src,
+        "destinationIp": packet.ip.dst,
+        "sourcePort": packet.tcp.srcport,
+        "destinationPort": packet.tcp.dstport,
+    }
 
 
 def client_hassh(packet):
@@ -152,10 +153,8 @@ def client_hassh(packet):
     dstip = packet.ip.dst
     sport = packet.tcp.srcport
     dport = packet.tcp.srcport
-    protocol = None
-    key = '{}:{}_{}:{}'.format(srcip, sport, dstip, dport)
-    if key in protocol_dict:
-        protocol = protocol_dict[key]
+    key = f'{srcip}:{sport}_{dstip}:{dport}'
+    protocol = protocol_dict[key] if key in protocol_dict else None
     # hassh fields
     ckex = ceacts = cmacts = ccacts = ""
     if 'kex_algorithms' in packet.ssh.field_names:
@@ -183,26 +182,27 @@ def client_hassh(packet):
     # Create hassh
     hassh_str = ';'.join([ckex, ceacts, cmacts, ccacts])
     hassh = md5(hassh_str.encode()).hexdigest()
-    record = {"timestamp": packet.sniff_time.isoformat(),
-              "sourceIp": packet.ip.src,
-              "destinationIp": packet.ip.dst,
-              "sourcePort": packet.tcp.srcport,
-              "destinationPort": packet.tcp.dstport,
-              "client": protocol,
-              "hassh": hassh,
-              "hasshAlgorithms": hassh_str,
-              "hasshVersion": HASSH_VERSION,
-              "ckex": ckex,
-              "ceacts": ceacts,
-              "cmacts": cmacts,
-              "ccacts": ccacts,
-              "clcts": clcts,
-              "clstc": clstc,
-              "ceastc": ceastc,
-              "cmastc": cmastc,
-              "ccastc": ccastc,
-              "cshka": cshka}
-    return record
+    return {
+        "timestamp": packet.sniff_time.isoformat(),
+        "sourceIp": packet.ip.src,
+        "destinationIp": packet.ip.dst,
+        "sourcePort": packet.tcp.srcport,
+        "destinationPort": packet.tcp.dstport,
+        "client": protocol,
+        "hassh": hassh,
+        "hasshAlgorithms": hassh_str,
+        "hasshVersion": HASSH_VERSION,
+        "ckex": ckex,
+        "ceacts": ceacts,
+        "cmacts": cmacts,
+        "ccacts": ccacts,
+        "clcts": clcts,
+        "clstc": clstc,
+        "ceastc": ceastc,
+        "cmastc": cmastc,
+        "ccastc": ccastc,
+        "cshka": cshka,
+    }
 
 
 def server_hassh(packet):
@@ -213,10 +213,8 @@ def server_hassh(packet):
     dstip = packet.ip.dst
     sport = packet.tcp.srcport
     dport = packet.tcp.srcport
-    protocol = None
-    key = '{}:{}_{}:{}'.format(srcip, sport, dstip, dport)
-    if key in protocol_dict:
-        protocol = protocol_dict[key]
+    key = f'{srcip}:{sport}_{dstip}:{dport}'
+    protocol = protocol_dict[key] if key in protocol_dict else None
     # hasshServer fields
     skex = seastc = smastc = scastc = ""
     if 'kex_algorithms' in packet.ssh.field_names:
@@ -244,26 +242,27 @@ def server_hassh(packet):
     # Create hasshServer
     hasshs_str = ';'.join([skex, seastc, smastc, scastc])
     hasshs = md5(hasshs_str.encode()).hexdigest()
-    record = {"timestamp": packet.sniff_time.isoformat(),
-              "sourceIp": packet.ip.src,
-              "destinationIp": packet.ip.dst,
-              "sourcePort": packet.tcp.srcport,
-              "destinationPort": packet.tcp.dstport,
-              "server": protocol,
-              "hasshServer": hasshs,
-              "hasshServerAlgorithms": hasshs_str,
-              "hasshVersion": HASSH_VERSION,
-              "skex": skex,
-              "seastc": seastc,
-              "smastc": smastc,
-              "scastc": scastc,
-              "slcts": slcts,
-              "slstc": slstc,
-              "seacts": seacts,
-              "smacts": smacts,
-              "scacts": scacts,
-              "sshka": sshka}
-    return record
+    return {
+        "timestamp": packet.sniff_time.isoformat(),
+        "sourceIp": packet.ip.src,
+        "destinationIp": packet.ip.dst,
+        "sourcePort": packet.tcp.srcport,
+        "destinationPort": packet.tcp.dstport,
+        "server": protocol,
+        "hasshServer": hasshs,
+        "hasshServerAlgorithms": hasshs_str,
+        "hasshVersion": HASSH_VERSION,
+        "skex": skex,
+        "seastc": seastc,
+        "smastc": smastc,
+        "scastc": scastc,
+        "slcts": slcts,
+        "slstc": slstc,
+        "seacts": seacts,
+        "smacts": smacts,
+        "scacts": scacts,
+        "sshka": sshka,
+    }
 
 
 def csv_logging(record):
@@ -358,11 +357,11 @@ def main():
     setup_logging(args.output_file)
     logger = logging.getLogger()
 
-    csv_header = ("timestamp,sourceIp,destinationIp,sourcePort,"
-                  "destinationPort,hasshType,identificationString,"
-                  "hassh,hasshVersion,hasshAlgorithms,kexAlgs,encAlgs,"
-                  "macAlgs,cmpAlgs")
     if args.log_format == 'csv':
+        csv_header = ("timestamp,sourceIp,destinationIp,sourcePort,"
+                      "destinationPort,hasshType,identificationString,"
+                      "hassh,hasshVersion,hasshAlgorithms,kexAlgs,encAlgs,"
+                      "macAlgs,cmpAlgs")
         logger.info(csv_header)
 
     # Process PCAP file
@@ -378,10 +377,7 @@ def main():
             cap.close()
             cap.eventloop.stop()
         except Exception as e:
-            print('Error: {}'.format(e))
-            pass
-
-    # Process directory of PCAP files
+            print(f'Error: {e}')
     elif args.read_directory:
         files = [f.path for f in os.scandir(args.read_directory)
                  if not f.name.startswith('.') and not f.is_dir()
@@ -399,10 +395,7 @@ def main():
                 cap.close()
                 cap.eventloop.stop()
             except Exception as e:
-                print('Error: {}'.format(e))
-                pass
-
-    # Capture live network traffic
+                print(f'Error: {e}')
     elif args.interface:
         # TODO: Use a Ring Buffer (LiveRingCapture), when the issue is fixed:
         # https://github.com/KimiNewt/pyshark/issues/299

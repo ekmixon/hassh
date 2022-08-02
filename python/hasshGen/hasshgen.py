@@ -63,27 +63,29 @@ def command_exec(container, server, ssh_client, rm):
                 base_url='unix://var/run/docker.sock',
                 version='auto')
     if 'openssh' in ssh_client:
-        cmd = ('ssh -o UserKnownHostsFile=/dev/null '
-               '-o StrictHostKeyChecking=no {}').format(server)
+        cmd = f'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {server}'
+
     elif 'dropbear' in ssh_client:
-        cmd = 'dbclient -y {}'.format(server)
+        cmd = f'dbclient -y {server}'
     elif 'paramiko' in ssh_client:
-        cmd = 'python /tmp/paramiko_conn.py {}'.format(server)
+        cmd = f'python /tmp/paramiko_conn.py {server}'
     try:
         client.containers.run(container, command=cmd)
     except Exception as e:
         errorMsg = str(e)
-        pass
-    if ('Permission denied' in errorMsg or 'paramiko.ssh_exception' in errorMsg
-            or 'dbclient: Connection' in errorMsg):
-        out = "[+] Command successfully executed!"
-    else:
-        out = "[-] Error: {}".format(errorMsg)
     # Delete the image
     if rm:
         client.images.remove(image=container, force=True, noprune=True)
 
-    return out
+    return (
+        "[+] Command successfully executed!"
+        if (
+            'Permission denied' in errorMsg
+            or 'paramiko.ssh_exception' in errorMsg
+            or 'dbclient: Connection' in errorMsg
+        )
+        else f"[-] Error: {errorMsg}"
+    )
 
 
 def main():
@@ -107,13 +109,11 @@ def main():
         for record in input_list:
             # Find the Dockerfile
             if record['image'] in ('debian', 'ubuntu'):
-                docker_file = "{}/Dockerfile.debian".format(DOCKERFILE_DIR)
+                docker_file = f"{DOCKERFILE_DIR}/Dockerfile.debian"
             elif record['image'] in ('centos', 'fedora'):
-                docker_file = "{}/Dockerfile.centos".format(DOCKERFILE_DIR)
+                docker_file = f"{DOCKERFILE_DIR}/Dockerfile.centos"
             else:
-                docker_file = "{}/Dockerfile.{}".format(
-                    DOCKERFILE_DIR,
-                    record['image'])
+                docker_file = f"{DOCKERFILE_DIR}/Dockerfile.{record['image']}"
             # Build the docker images
             tag_id += 1
             container = tag_name.format(img=record['image'], id=tag_id)
@@ -131,13 +131,13 @@ def main():
                                "SSHCLIENT_VER": record['sshclient_ver']})
                 # Docker image successfully built
                 print("[+]", output[0], "successfully built")
-                print("    - image: {}:{}, ssh client: {} {}".format(
-                    record['image'], record['image_ver'], record['sshclient'],
-                    record['sshclient_ver']))
-                # Run the container and exec SSH command
-                out = command_exec(
-                    container, args.server, record['sshclient'], rm=False)
-                if out:
+                print(
+                    f"    - image: {record['image']}:{record['image_ver']}, ssh client: {record['sshclient']} {record['sshclient_ver']}"
+                )
+
+                if out := command_exec(
+                    container, args.server, record['sshclient'], rm=False
+                ):
                     print(out)
             except Exception as e:
                 print("[-] Error:", e)
@@ -164,8 +164,10 @@ def main():
                            "SSHCLIENT_VER": args.sshclient_ver})
             # Docker image successfully built
             print("[+]", output[0], "successfully built")
-            print("    - image: {}:{}, ssh client: {} {}".format(
-                args.image, args.image_ver, args.sshclient, args.sshclient_ver))
+            print(
+                f"    - image: {args.image}:{args.image_ver}, ssh client: {args.sshclient} {args.sshclient_ver}"
+            )
+
             # Run hassh.py
             proc = None
             if args.fingerprint and not proc:
