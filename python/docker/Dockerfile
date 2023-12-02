@@ -15,7 +15,7 @@
 #      $ docker run --net=host -it hassh:latest -i any --print
 # Note: According to Docker's docs, the host networking driver only works on Linux hosts, and is not supported on Docker for Mac, Docker for Windows, or Docker EE for Windows Server.
 
-FROM alpine:latest
+FROM alpine:3.18.5
 MAINTAINER Adel Karimi (@0x4d31)
 ENV DEBIAN_FRONTEND noninteractive
 RUN apk --no-cache add python3 gcc \
